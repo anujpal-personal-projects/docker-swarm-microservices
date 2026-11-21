@@ -1,0 +1,236 @@
+# =============================================================
+# Sock Shop — Docker Swarm Stack File
+# Compatible with: RHEL 9, Ubuntu 22.04, Amazon Linux 2023
+#
+# Fixes applied vs original Weaveworks compose file:
+#   1. mongo:3.4 → mongo:4.4  (3.4 fails on kernel 5.x+)
+#   2. read_only: true removed from all services
+#      (MongoDB needs /tmp for socket; Java/Spring Boot needs
+#       /tmp for Tomcat temp files on startup)
+# =============================================================
+version: '3.1'
+
+services:
+
+  front-end:
+    image: weaveworksdemos/front-end:0.3.12
+    hostname: front-end
+    restart: always
+    cap_drop:
+      - all
+    environment:
+      - reschedule=on-node-failure
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  edge-router:
+    image: weaveworksdemos/edge-router:0.1.1
+    ports:
+      - '80:80'
+      - '8080:8080'
+    cap_add:
+      - NET_BIND_SERVICE
+    cap_drop:
+      - all
+    hostname: edge-router
+    restart: always
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  catalogue:
+    image: weaveworksdemos/catalogue:0.3.5
+    hostname: catalogue
+    restart: always
+    cap_drop:
+      - all
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  catalogue-db:
+    image: weaveworksdemos/catalogue-db:0.3.0
+    hostname: catalogue-db
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_ALLOW_EMPTY_PASSWORD=true
+      - MYSQL_DATABASE=socksdb
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  carts:
+    image: weaveworksdemos/carts:0.4.8
+    hostname: carts
+    restart: always
+    cap_drop:
+      - all
+    cap_add:
+      - NET_BIND_SERVICE
+    environment:
+      - JAVA_OPTS=-Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+    # read_only removed — Spring Boot Tomcat writes to /tmp on startup
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  carts-db:
+    image: mongo:4.4
+    hostname: carts-db
+    restart: always
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    cap_drop:
+      - all
+    # read_only removed — MongoDB writes /tmp/mongodb-27017.sock on startup
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  orders:
+    image: weaveworksdemos/orders:0.4.7
+    hostname: orders
+    restart: always
+    cap_drop:
+      - all
+    cap_add:
+      - NET_BIND_SERVICE
+    environment:
+      - JAVA_OPTS=-Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+    # read_only removed
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  orders-db:
+    image: mongo:4.4
+    hostname: orders-db
+    restart: always
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    cap_drop:
+      - all
+    # read_only removed
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  shipping:
+    image: weaveworksdemos/shipping:0.4.8
+    hostname: shipping
+    restart: always
+    cap_drop:
+      - all
+    cap_add:
+      - NET_BIND_SERVICE
+    environment:
+      - JAVA_OPTS=-Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+    # read_only removed
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  rabbitmq:
+    image: rabbitmq:3.6.8
+    hostname: rabbitmq
+    restart: always
+    cap_drop:
+      - all
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  queue-master:
+    image: weaveworksdemos/queue-master:0.3.1
+    hostname: queue-master
+    restart: always
+    cap_drop:
+      - all
+    cap_add:
+      - NET_BIND_SERVICE
+    # read_only removed
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  payment:
+    image: weaveworksdemos/payment:0.4.3
+    hostname: payment
+    restart: always
+    cap_drop:
+      - all
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  user:
+    image: weaveworksdemos/user:0.4.4
+    hostname: user
+    restart: always
+    cap_drop:
+      - all
+    cap_add:
+      - NET_BIND_SERVICE
+    environment:
+      - MONGO_HOST=user-db:27017
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  user-db:
+    image: weaveworksdemos/user-db:0.4.0
+    hostname: user-db
+    restart: always
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    cap_drop:
+      - all
+    # read_only removed
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  user-sim:
+    image: weaveworksdemos/load-test:0.1.1
+    hostname: user-simulator
+    restart: always
+    cap_drop:
+      - all
+    cap_add:
+      - NET_BIND_SERVICE
+    command: -d 60 -r 200 -c 2 -h edge-router
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
